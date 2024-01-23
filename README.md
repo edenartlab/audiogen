@@ -1,3 +1,5 @@
 # audiogen
-AI audio tools, currently using models from Audiocraft:
+AI audio tools.
+
+currently this is just a replicate cog wrapper for META's Audiocraft:
 https://github.com/facebookresearch/audiocraft
