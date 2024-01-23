@@ -1,0 +1,2 @@
+
+sudo cog predict -i model_name="facebook/audiogen-medium" -i text_input="river flowing, flute, mediation"
