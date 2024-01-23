@@ -89,7 +89,7 @@ class Predictor(BasePredictor):
             raise ValueError("model_name must contain 'musicgen' or 'audiogen'")
         
         desired_duration = min(desired_duration, model.max_duration)
-        model.set_generation_params(duration=desired_duration)
+        model.set_generation_params(duration=int(desired_duration))
 
         # Generate the audio:
         descriptions = [text_input] # just generate a single sample for now
@@ -110,8 +110,9 @@ class Predictor(BasePredictor):
         text_input: str = Input(
             description="Text description of the sound / music", default=None
         ),
-        duration_seconds: int = Input(
-            description="Duration of the audio in seconds", default=10
+        duration_seconds: float = Input(
+            description="Duration of the audio in seconds",
+            ge=1.0, le=120.0, default=10.0
         ),
 
     ) -> Iterator[GENERATOR_OUTPUT_TYPE]:
