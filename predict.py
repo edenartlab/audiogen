@@ -1,8 +1,8 @@
 # never push DEBUG_MODE = True to Replicate!
-DEBUG_MODE = False
-#DEBUG_MODE = True
+# DEBUG_MODE = False
 
 import os
+import shutil
 import time
 import random
 import sys
@@ -79,6 +79,53 @@ class Predictor(BasePredictor):
     def setup(self):
         print("cog:setup")
 
+    # https://www.reddit.com/r/audiocraft/comments/146914g/longer_than_30_sec/
+    def generate_long_audio(self, model, text, duration, topk=250, topp=0, temperature=1.0, cfg_coef=3.0, overlap=5):
+        topk = int(topk)
+
+        output = None
+        total_samples = duration * 50 + 3
+        segment_duration = duration
+
+        while duration > 0:
+            if output is None:  # first pass of long or short song
+                if segment_duration > model.lm.cfg.dataset.segment_duration: 
+                    segment_duration = model.lm.cfg.dataset.segment_duration
+                else:
+                    segment_duration = duration
+            else:  # next pass of long song
+                if duration + overlap < model.lm.cfg.dataset.segment_duration:
+                    segment_duration = duration + overlap
+                else:
+                    segment_duration = model.lm.cfg.dataset.segment_duration
+
+            print(f'Segment duration: {segment_duration}, duration: {duration}, overlap: {overlap}')
+
+            model.set_generation_params(
+                use_sampling=True,
+                top_k=topk,
+                top_p=topp,
+                temperature=temperature,
+                cfg_coef=cfg_coef,
+                duration=min(segment_duration, 30),  # ensure duration does not exceed 30
+            )
+
+            if output is None:
+                next_segment = model.generate(descriptions=[text])
+                duration -= segment_duration
+            else:
+                last_chunk = output[:, :, -overlap*model.sample_rate:]
+                next_segment = model.generate_continuation(last_chunk, model.sample_rate, descriptions=[text])
+                duration -= segment_duration - overlap
+
+            if output is None:
+                output = next_segment
+            else:
+                output = torch.cat([output[:, :, :-overlap*model.sample_rate], next_segment], 2)
+
+        return output
+
+
     def generate(self, model_name, text_input, desired_duration):
 
         if "musicgen" in model_name:
@@ -88,12 +135,15 @@ class Predictor(BasePredictor):
         else:
             raise ValueError("model_name must contain 'musicgen' or 'audiogen'")
         
-        desired_duration = min(desired_duration, model.max_duration)
+        #desired_duration = min(desired_duration, model.max_duration)
         model.set_generation_params(duration=int(desired_duration))
 
         # Generate the audio:
-        descriptions = [text_input] # just generate a single sample for now
-        wav = model.generate(descriptions)
+        if desired_duration < 30:
+            wav = model.generate([text_input])
+        else:
+            wav = self.generate_long_audio(model, text_input, desired_duration)
+        
         wav = wav[0].cpu()
 
         return wav, model.sample_rate
@@ -151,7 +201,7 @@ class Predictor(BasePredictor):
         if DEBUG_MODE:
             print(attributes)
             #shutil.copyfile(out_path, os.path.join(debug_output_dir, prediction_name + ".mp4"))
-            yield out_path
+            yield cogPath(out_path)
         else:
             yield CogOutput(files=[cogPath(out_path)], name=text_input, thumbnails=[cogPath('/src/sound.png')], attributes=attributes, isFinal=True, progress=1.0)
 
